@@ -9,7 +9,7 @@ const config = require('../config.js');
 
 const { scripts } = config;
 
-const PORT = process.env.PORT || 8642;
+const PORT = 8642;
 const HOST = '0.0.0.0';
 const SCRIPTS_BY_ID = new Map(scripts.map((s) => [s.id, s]));
 const MAX_BUFFERED_LINES = 500; // per-script scrollback replayed to new clients
