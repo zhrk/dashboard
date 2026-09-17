@@ -13,9 +13,8 @@ const PORT = 8642;
 const HOST = '0.0.0.0';
 const SCRIPTS_BY_ID = new Map(scripts.map((s) => [s.id, s]));
 const MAX_BUFFERED_LINES = 500; // per-script scrollback replayed to new clients
-const KILL_ESCALATION_MS = 5000; // SIGTERM grace period before SIGKILL
 
-// Runtime state per script id: { proc, status, buffer, pendingRestart, killTimer }
+// Runtime state per script id: { proc, status, buffer, pendingRestart }
 const state = new Map();
 for (const s of scripts) {
   state.set(s.id, {
@@ -23,27 +22,14 @@ for (const s of scripts) {
     status: 'stopped',
     buffer: [],
     pendingRestart: false,
-    killTimer: null,
   });
 }
 
-// ---- static file serving (index.html + assets) ----
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const INDEX_HTML = fs.readFileSync(path.join(__dirname, 'index.html'));
 
-const server = http.createServer((req, res) => {
-  let filePath = req.url === '/' ? '/index.html' : req.url;
-  filePath = path.join(__dirname, path.normalize(filePath).replace(/^(\.\.[/\\])+/, ''));
-
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not found');
-      return;
-    }
-    const ext = path.extname(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
-    res.end(data);
-  });
+const server = http.createServer((_, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(INDEX_HTML);
 });
 
 const wss = new WebSocketServer({ server });
@@ -66,32 +52,12 @@ function setStatus(id, status) {
   broadcast({ type: 'status', id, status });
 }
 
-// Node's DEP0190 fires when shell:true is combined with an args array.
-// When shell is requested, fold command+args into one string ourselves
-// (this is also what actually resolves `npm` -> `npm.cmd` on Windows) and
-// pass spawn() an empty args array instead.
-function buildInvocation(cfg) {
-  const args = cfg.args || [];
-  if (cfg.shell) return { command: [cfg.command, ...args].join(' '), args: [] };
-  return { command: cfg.command, args };
-}
-
 function startScript(id) {
   const cfg = SCRIPTS_BY_ID.get(id);
   const st = state.get(id);
   if (!cfg || (st.proc && st.status === 'running')) return;
 
-  const { command, args } = buildInvocation(cfg);
-  const proc = spawn(command, args, {
-    cwd: cfg.cwd || __dirname,
-    env: { ...process.env, ...(cfg.env || {}) },
-    shell: cfg.shell || false,
-    // Make the child the leader of its own process group (POSIX) so that on
-    // stop() we can signal the whole tree (shell -> npm -> actual server),
-    // not just the immediate child. Without this, npm's grandchild keeps the
-    // port bound after "stop" because only the outer process gets SIGTERM.
-    detached: process.platform !== 'win32',
-  });
+  const proc = spawn('npm start', [], { cwd: cfg.cwd, env: process.env, shell: true });
 
   st.proc = proc;
   st.buffer = [];
@@ -117,8 +83,6 @@ function startScript(id) {
     pushToBuffer(id, msg);
     broadcast({ type: 'log', id, data: msg });
     st.proc = null;
-    clearTimeout(st.killTimer);
-    st.killTimer = null;
     setStatus(id, 'stopped');
 
     if (st.pendingRestart) {
@@ -130,31 +94,16 @@ function startScript(id) {
 
 // Signal the whole process tree, not just the immediate child — npm (and the
 // shell wrapping it) otherwise survive and leave the real server holding the
-// port. POSIX: negative pid targets the whole process group created via
-// `detached: true` above. Windows: taskkill /T walks the tree itself.
-function killTree(proc, signal) {
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/pid', String(proc.pid), '/T', '/f']);
-    return;
-  }
-  try {
-    process.kill(-proc.pid, signal);
-  } catch {
-    try {
-      proc.kill(signal);
-    } catch {}
-  }
+// port. taskkill /T walks the tree itself.
+function killTree(proc) {
+  spawn('taskkill', ['/pid', String(proc.pid), '/T', '/f']);
 }
 
 function stopScript(id) {
   const st = state.get(id);
   if (!st.proc) return;
 
-  killTree(st.proc, 'SIGTERM');
-  clearTimeout(st.killTimer);
-  st.killTimer = setTimeout(() => {
-    if (st.proc) killTree(st.proc, 'SIGKILL');
-  }, KILL_ESCALATION_MS);
+  killTree(st.proc);
 }
 
 function restartScript(id) {
@@ -169,7 +118,7 @@ function restartScript(id) {
 }
 
 function registrySnapshot() {
-  return scripts.map((s) => ({ id: s.id, label: s.label, status: state.get(s.id).status }));
+  return scripts.map((s) => ({ id: s.id, status: state.get(s.id).status }));
 }
 
 wss.on('connection', (ws) => {

@@ -164,7 +164,7 @@
     <script>
       (function () {
         // Registry + per-script client-side log buffer (server also replays on connect).
-        const scripts = new Map(); // id -> { label, status }
+        const scripts = new Map(); // id -> { status }
         const logs = new Map(); // id -> string[]
         let activeId = null;
         let ws = null;
@@ -175,8 +175,7 @@
         const connEl = document.getElementById('conn-status');
 
         function connect() {
-          const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-          ws = new WebSocket(`${proto}://${location.host}/`);
+          ws = new WebSocket(`ws://${location.host}/`);
 
           ws.onopen = () => {
             connEl.textContent = 'connected';
@@ -198,7 +197,7 @@
 
         function handleRegistry(list) {
           for (const s of list) {
-            scripts.set(s.id, { label: s.label, status: s.status });
+            scripts.set(s.id, { status: s.status });
             if (!logs.has(s.id)) logs.set(s.id, []);
           }
           renderList();
@@ -231,7 +230,7 @@
 
             const row1 = document.createElement('div');
             row1.className = 'row1';
-            row1.innerHTML = `<span class="dot ${s.status}"></span><span class="label">${escapeHtml(s.label)}</span>`;
+            row1.innerHTML = `<span class="dot ${s.status}"></span><span class="label">${escapeHtml(id)}</span>`;
 
             const actions = document.createElement('div');
             actions.className = 'actions';
@@ -264,8 +263,7 @@
 
         function selectScript(id) {
           activeId = id;
-          const s = scripts.get(id);
-          activeLabelEl.textContent = s ? s.label : id;
+          activeLabelEl.textContent = id;
           logEl.textContent = (logs.get(id) || []).join('');
           logEl.scrollTop = logEl.scrollHeight;
           renderList();
