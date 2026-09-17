@@ -26,8 +26,15 @@ for (const s of scripts) {
 }
 
 const INDEX_HTML = fs.readFileSync(path.join(__dirname, 'index.html'));
+const FAVICON_SVG = fs.readFileSync(path.join(__dirname, 'favicon.svg'));
 
-const server = http.createServer((_, res) => {
+const server = http.createServer((req, res) => {
+  if (req.url === '/favicon.svg') {
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+    res.end(FAVICON_SVG);
+    return;
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(INDEX_HTML);
 });
