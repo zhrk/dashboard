@@ -1,16 +1,15 @@
 'use strict';
 
-const http = require('http');
-const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { Hono } = require('hono');
+const { serve } = require('@hono/node-server');
+const { serveStatic } = require('@hono/node-server/serve-static');
 const { WebSocketServer } = require('ws');
 const config = require('../config.js');
 
 const { scripts } = config;
 
-const PORT = 8642;
-const HOST = '0.0.0.0';
 const SCRIPTS_BY_ID = new Map(scripts.map((s) => [s.id, s]));
 const MAX_BUFFERED_LINES = 500; // per-script scrollback replayed to new clients
 
@@ -25,19 +24,11 @@ for (const s of scripts) {
   });
 }
 
-const INDEX_HTML = fs.readFileSync(path.join(__dirname, 'index.html'));
-const FAVICON_SVG = fs.readFileSync(path.join(__dirname, 'favicon.svg'));
+const app = new Hono();
 
-const server = http.createServer((req, res) => {
-  if (req.url === '/favicon.svg') {
-    res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
-    res.end(FAVICON_SVG);
-    return;
-  }
+app.use('*', serveStatic({ root: path.join(__dirname, '../public') }));
 
-  res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(INDEX_HTML);
-});
+const server = serve({ fetch: app.fetch, port: 8642, hostname: '0.0.0.0' });
 
 const wss = new WebSocketServer({ server });
 
@@ -150,10 +141,6 @@ wss.on('connection', (ws) => {
     else if (msg.action === 'stop') stopScript(msg.id);
     else if (msg.action === 'restart') restartScript(msg.id);
   });
-});
-
-server.listen(PORT, HOST, () => {
-  console.log(`http://${HOST}:${PORT}`);
 });
 
 // Auto-start every registered script as soon as the dashboard boots.
