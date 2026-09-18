@@ -1,0 +1,133 @@
+(function () {
+  // Registry + per-script client-side log buffer (server also replays on connect).
+  const scripts = new Map(); // id -> { status }
+  const logs = new Map(); // id -> string[]
+  let activeId = null;
+  let ws = null;
+
+  const listEl = document.getElementById('script-list');
+  const logEl = document.getElementById('log');
+  const activeLabelEl = document.getElementById('active-label');
+  const connEl = document.getElementById('conn-status');
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/`);
+
+    ws.onopen = () => {
+      connEl.textContent = 'connected';
+      connEl.className = 'conn up';
+    };
+    ws.onclose = () => {
+      connEl.textContent = 'disconnected — retrying...';
+      connEl.className = 'conn down';
+      setTimeout(connect, 1500);
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      if (msg.type === 'registry') handleRegistry(msg.scripts);
+      else if (msg.type === 'status') handleStatus(msg.id, msg.status);
+      else if (msg.type === 'log') handleLog(msg.id, msg.data);
+    };
+  }
+
+  function handleRegistry(list) {
+    for (const s of list) {
+      scripts.set(s.id, { status: s.status });
+      if (!logs.has(s.id)) logs.set(s.id, []);
+    }
+    renderList();
+    if (!activeId && list.length) selectScript(list[0].id);
+  }
+
+  function handleStatus(id, status) {
+    const s = scripts.get(id);
+    if (!s) return;
+    s.status = status;
+    renderList();
+  }
+
+  function handleLog(id, data) {
+    const buf = logs.get(id) || [];
+    buf.push(data);
+    if (buf.length > 2000) buf.shift(); // client-side scrollback cap
+    logs.set(id, buf);
+    if (id === activeId) appendLog(data);
+  }
+
+  function renderList() {
+    listEl.innerHTML = '';
+    for (const [id, s] of scripts) {
+      const item = document.createElement('div');
+      item.className = 'script-item' + (id === activeId ? ' active' : '');
+      item.onclick = (e) => {
+        if (e.target.tagName !== 'BUTTON') selectScript(id);
+      };
+
+      const row1 = document.createElement('div');
+      row1.className = 'row1';
+      row1.innerHTML = `<span class="dot ${s.status}"></span><span class="label">${escapeHtml(id)}</span>`;
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+
+      if (s.status === 'running') {
+        const stopBtn = document.createElement('button');
+        stopBtn.textContent = 'Stop';
+        stopBtn.className = 'stop';
+        stopBtn.onclick = () => send({ action: 'stop', id });
+        const restartBtn = document.createElement('button');
+        restartBtn.textContent = 'Restart';
+        restartBtn.onclick = () => send({ action: 'restart', id });
+        actions.append(stopBtn, restartBtn);
+      } else if (s.status === 'restarting') {
+        const pendingBtn = document.createElement('button');
+        pendingBtn.textContent = 'Restarting…';
+        pendingBtn.disabled = true;
+        actions.append(pendingBtn);
+      } else {
+        const startBtn = document.createElement('button');
+        startBtn.textContent = 'Start';
+        startBtn.onclick = () => send({ action: 'start', id });
+        actions.append(startBtn);
+      }
+
+      item.append(row1, actions);
+      listEl.appendChild(item);
+    }
+  }
+
+  function selectScript(id) {
+    activeId = id;
+    activeLabelEl.textContent = id;
+    logEl.textContent = (logs.get(id) || []).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+    renderList();
+  }
+
+  function appendLog(data) {
+    const nearBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 40;
+    logEl.textContent += data;
+    if (nearBottom) logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function send(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  }
+
+  function escapeHtml(str) {
+    return str.replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[c]
+    );
+  }
+
+  connect();
+})();
