@@ -6,8 +6,9 @@ const pm = require('./pm.js');
 
 const wss = new WebSocketServer({ server });
 
-function broadcast(msg) {
-  const payload = JSON.stringify(msg);
+function broadcast(message) {
+  const payload = JSON.stringify(message);
+
   for (const client of wss.clients) {
     if (client.readyState === client.OPEN) client.send(payload);
   }
@@ -25,18 +26,12 @@ wss.on('connection', (ws) => {
     }
   }
 
-  ws.on('message', (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (!msg || !pm.has(msg.id)) return;
+  ws.on('message', (message) => {
+    const { id, action } = JSON.parse(message);
 
-    if (msg.action === 'start') pm.start(msg.id);
-    else if (msg.action === 'stop') pm.stop(msg.id);
-    else if (msg.action === 'restart') pm.restart(msg.id);
+    if (action === 'start') pm.start(id);
+    if (action === 'stop') pm.stop(id);
+    if (action === 'restart') pm.restart(id);
   });
 });
 

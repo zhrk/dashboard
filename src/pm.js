@@ -27,10 +27,6 @@ class ProcessManager extends EventEmitter {
     }
   }
 
-  has(id) {
-    return this.configById.has(id);
-  }
-
   registrySnapshot() {
     return this.scripts.map((s) => ({ id: s.id, status: this.state.get(s.id).status }));
   }
@@ -82,6 +78,8 @@ class ProcessManager extends EventEmitter {
 
   restart(id) {
     const st = this.state.get(id);
+    if (!st) return;
+
     if (st.proc) {
       st.pendingRestart = true;
       this.stop(id);
