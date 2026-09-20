@@ -1,9 +1,8 @@
 (function () {
-  // Registry + per-script client-side log buffer (server also replays on connect).
+  // Registry + per-script client-side log buffer (server replays on every connect).
   const scripts = new Map(); // id -> { status }
   const logs = new Map(); // id -> string[]
   let activeId = null;
-  let ws = null;
 
   const listEl = document.getElementById('script-list');
   const logEl = document.getElementById('log');
@@ -11,31 +10,30 @@
   const connEl = document.getElementById('conn-status');
 
   function connect() {
-    ws = new WebSocket(`ws://${location.host}/`);
+    const es = new EventSource('/events');
+    const on = (type, fn) => es.addEventListener(type, (e) => fn(JSON.parse(e.data)));
 
-    ws.onopen = () => {
+    es.onopen = () => {
       connEl.textContent = 'connected';
       connEl.className = 'conn up';
     };
-    ws.onclose = () => {
+
+    es.onerror = () => {
       connEl.textContent = 'disconnected — retrying...';
       connEl.className = 'conn down';
-      setTimeout(connect, 1500);
     };
-    ws.onerror = () => ws.close();
-    ws.onmessage = (evt) => {
-      const msg = JSON.parse(evt.data);
-      if (msg.type === 'registry') handleRegistry(msg.scripts);
-      else if (msg.type === 'status') handleStatus(msg.id, msg.status);
-      else if (msg.type === 'log') handleLog(msg.id, msg.data);
-    };
+
+    on('registry', handleRegistry);
+    on('status', ({ id, status }) => handleStatus(id, status));
+    on('log', ({ id, data }) => handleLog(id, data));
   }
 
   function handleRegistry(list) {
     for (const s of list) {
       scripts.set(s.id, { status: s.status });
-      if (!logs.has(s.id)) logs.set(s.id, []);
+      logs.set(s.id, []);
     }
+    logEl.textContent = '';
     renderList();
     if (!activeId && list.length) selectScript(list[0].id);
   }
@@ -75,10 +73,10 @@
         const stopBtn = document.createElement('button');
         stopBtn.textContent = 'Stop';
         stopBtn.className = 'stop';
-        stopBtn.onclick = () => send({ action: 'stop', id });
+        stopBtn.onclick = () => send('stop', id);
         const restartBtn = document.createElement('button');
         restartBtn.textContent = 'Restart';
-        restartBtn.onclick = () => send({ action: 'restart', id });
+        restartBtn.onclick = () => send('restart', id);
         actions.append(stopBtn, restartBtn);
       } else if (s.status === 'restarting') {
         const pendingBtn = document.createElement('button');
@@ -88,7 +86,7 @@
       } else {
         const startBtn = document.createElement('button');
         startBtn.textContent = 'Start';
-        startBtn.onclick = () => send({ action: 'start', id });
+        startBtn.onclick = () => send('start', id);
         actions.append(startBtn);
       }
 
@@ -111,8 +109,8 @@
     if (nearBottom) logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function send(obj) {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  function send(action, id) {
+    fetch(`/${action}/${id}`, { method: 'POST' });
   }
 
   function escapeHtml(str) {

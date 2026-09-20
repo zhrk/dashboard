@@ -2,7 +2,6 @@
 
 const pm = require('./pm.js');
 require('./server.js');
-require('./wss.js');
 
 pm.startAll();
 
