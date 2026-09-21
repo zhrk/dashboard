@@ -11,7 +11,7 @@ const app = new Hono();
 
 app.get('/events', events);
 
-for (const action of ['start', 'stop', 'restart']) {
+for (const action of ['start', 'stop', 'restart', 'update']) {
   app.post(`/${action}/:id`, (c) => {
     pm[action](c.req.param('id'));
 

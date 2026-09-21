@@ -5,6 +5,7 @@ const { EventEmitter } = require('events');
 const config = require('../config.js');
 
 const MAX_BUFFERED_LINES = 500; // per-script scrollback replayed to new clients
+const UPDATE_STEPS = ['git pull', 'npm i'];
 
 // Owns the child processes for every configured script: spawning, killing,
 // status tracking and log scrollback. Transport-agnostic — it emits 'log' and
@@ -15,7 +16,7 @@ class ProcessManager extends EventEmitter {
     this.scripts = scripts;
     this.configById = new Map(scripts.map((s) => [s.id, s]));
 
-    // Runtime state per script id: { proc, status, buffer, pendingRestart }
+    // Runtime state per script id: { proc, status, buffer, pendingRestart, pendingUpdate }
     this.state = new Map();
     for (const s of scripts) {
       this.state.set(s.id, {
@@ -23,6 +24,7 @@ class ProcessManager extends EventEmitter {
         status: 'stopped',
         buffer: [],
         pendingRestart: false,
+        pendingUpdate: false,
       });
     }
   }
@@ -36,7 +38,7 @@ class ProcessManager extends EventEmitter {
     return [...this.state].map(([id, st]) => [id, st.buffer]);
   }
 
-  start(id) {
+  start(id, { keepLog = false } = {}) {
     const cfg = this.configById.get(id);
     const st = this.state.get(id);
     if (!cfg || (st.proc && st.status === 'running')) return;
@@ -44,7 +46,7 @@ class ProcessManager extends EventEmitter {
     const proc = spawn('npm start', [], { cwd: cfg.cwd, env: process.env, shell: true });
 
     st.proc = proc;
-    st.buffer = [];
+    if (!keepLog) st.buffer = [];
     this.#setStatus(id, 'running');
 
     const onData = (data) => this.#log(id, data.toString());
@@ -60,6 +62,13 @@ class ProcessManager extends EventEmitter {
     proc.on('exit', (code, signal) => {
       this.#log(id, `[server] process exited (code=${code}, signal=${signal})\n`);
       st.proc = null;
+
+      if (st.pendingUpdate) {
+        st.pendingUpdate = false;
+        this.#updateAndStart(id);
+        return;
+      }
+
       this.#setStatus(id, 'stopped');
 
       if (st.pendingRestart) {
@@ -89,12 +98,66 @@ class ProcessManager extends EventEmitter {
     }
   }
 
+  // stop -> git pull -> npm i -> npm start
+  update(id) {
+    const st = this.state.get(id);
+    if (!st || st.status === 'updating' || st.status === 'restarting') return;
+
+    this.#setStatus(id, 'updating');
+
+    if (st.proc) {
+      st.pendingUpdate = true;
+      this.stop(id);
+    } else {
+      this.#updateAndStart(id);
+    }
+  }
+
   startAll() {
     for (const s of this.scripts) this.start(s.id);
   }
 
   stopAll() {
     for (const [id] of this.state) this.stop(id);
+  }
+
+  // git pull -> npm i -> npm start. Any failing step aborts and leaves the script
+  // stopped rather than starting something half-updated.
+  async #updateAndStart(id) {
+    for (const cmd of UPDATE_STEPS) {
+      if (!(await this.#runStep(id, cmd))) {
+        this.#setStatus(id, 'error');
+        return;
+      }
+    }
+
+    this.start(id, { keepLog: true });
+  }
+
+  // Runs one shell command in the script's cwd, streaming output to its log.
+  // Resolves true on exit code 0.
+  #runStep(id, cmd) {
+    const cfg = this.configById.get(id);
+
+    this.#log(id, `[server] ${cmd}\n`);
+
+    return new Promise((resolve) => {
+      const proc = spawn(cmd, [], { cwd: cfg.cwd, env: process.env, shell: true });
+      const onData = (data) => this.#log(id, data.toString());
+
+      proc.stdout.on('data', onData);
+      proc.stderr.on('data', onData);
+
+      proc.on('error', (err) => {
+        this.#log(id, `[server] ${cmd} failed to run: ${err.message}\n`);
+        resolve(false);
+      });
+
+      proc.on('close', (code) => {
+        if (code !== 0) this.#log(id, `[server] ${cmd} failed (code=${code}), not starting\n`);
+        resolve(code === 0);
+      });
+    });
   }
 
   #log(id, line) {

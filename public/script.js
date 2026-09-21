@@ -77,22 +77,29 @@
         const restartBtn = document.createElement('button');
         restartBtn.textContent = 'Restart';
         restartBtn.onclick = () => send('restart', id);
-        actions.append(stopBtn, restartBtn);
-      } else if (s.status === 'restarting') {
+        actions.append(stopBtn, restartBtn, updateButton(id));
+      } else if (s.status === 'restarting' || s.status === 'updating') {
         const pendingBtn = document.createElement('button');
-        pendingBtn.textContent = 'Restarting…';
+        pendingBtn.textContent = s.status === 'updating' ? 'Updating…' : 'Restarting…';
         pendingBtn.disabled = true;
         actions.append(pendingBtn);
       } else {
         const startBtn = document.createElement('button');
         startBtn.textContent = 'Start';
         startBtn.onclick = () => send('start', id);
-        actions.append(startBtn);
+        actions.append(startBtn, updateButton(id));
       }
 
       item.append(row1, actions);
       listEl.appendChild(item);
     }
+  }
+
+  function updateButton(id) {
+    const btn = document.createElement('button');
+    btn.textContent = 'Update';
+    btn.onclick = () => send('update', id);
+    return btn;
   }
 
   function selectScript(id) {

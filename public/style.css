@@ -83,7 +83,8 @@ body {
   background: var(--err);
 }
 
-.dot.restarting {
+.dot.restarting,
+.dot.updating {
   background: var(--warn);
 }
 
