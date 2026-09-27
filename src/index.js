@@ -2,13 +2,23 @@ import { Hono } from 'hono';
 import { proxy } from 'hono/proxy';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { Agent } from 'undici';
 
 const API_URL = 'http://127.0.0.1:11379';
+
+const streamAgent = new Agent({ bodyTimeout: 0 });
 
 const app = new Hono();
 
 app.all('/apps/*', (c) => proxy(API_URL + c.req.path + new URL(c.req.url).search, c.req.raw));
-app.get('/events', (c) => proxy(API_URL + '/events', { raw: c.req.raw, signal: null }));
+
+app.get('/events', (c) =>
+  proxy(API_URL + '/events', {
+    raw: c.req.raw,
+    signal: null,
+    customFetch: (req) => fetch(req, { dispatcher: streamAgent }),
+  })
+);
 
 const onFound = (_, c) => c.header('Cache-Control', 'no-cache');
 
