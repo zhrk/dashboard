@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { proxy } from 'hono/proxy';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Agent } from 'undici';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 const API_URL = 'http://127.0.0.1:11379';
 
@@ -16,7 +16,7 @@ app.get('/events', (c) =>
   proxy(API_URL + '/events', {
     raw: c.req.raw,
     signal: null,
-    customFetch: (req) => fetch(req, { dispatcher: streamAgent }),
+    customFetch: (req) => undiciFetch(req.url, { headers: req.headers, dispatcher: streamAgent }),
   })
 );
 

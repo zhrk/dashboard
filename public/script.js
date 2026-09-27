@@ -27,10 +27,10 @@ document.addEventListener('alpine:init', () => {
       });
 
       // The dashboard itself is managed by the process manager: once the
-      // connection drops (restart/update), wait for the server and reload
+      // connection drops (restart/update), wait for the event stream and reload
       events.onerror = async () => {
         events.close();
-        while (!(await fetch('/apps').then((r) => r.ok, () => false))) {
+        while (!(await fetch('/events').then((r) => (r.body?.cancel(), r.ok), () => false))) {
           await new Promise((r) => setTimeout(r, 1000));
         }
         location.reload();
