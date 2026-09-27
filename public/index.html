@@ -7,6 +7,10 @@
     <link rel="icon" href="favicon.svg" />
     <link rel="stylesheet" href="style.css" />
     <script src="script.js"></script>
+    <script type="module">
+      import { AnsiUp } from './ansi_up.js';
+      window.ansiUp = new AnsiUp();
+    </script>
     <script src="alpine.js" defer></script>
   </head>
   <body x-data="dashboard">
@@ -45,6 +49,6 @@
       x-ref="logs"
       @scroll="follow = $el.scrollTop + $el.clientHeight >= $el.scrollHeight - 20"
     ><template
-        x-for="log in logs" :key="log.id"><div :class="log.stream"><time x-text="new Date(log.time).toLocaleTimeString()"></time> <span x-text="log.text"></span></div></template></pre>
+        x-for="log in logs" :key="log.id"><div :class="log.stream"><time x-text="new Date(log.time).toLocaleTimeString()"></time> <span x-html="ansiUp.ansi_to_html(log.text)"></span></div></template></pre>
   </body>
 </html>

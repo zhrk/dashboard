@@ -23,6 +23,7 @@ app.get('/events', (c) =>
 const onFound = (_, c) => c.header('Cache-Control', 'no-cache');
 
 app.get('/alpine.js', serveStatic({ path: 'node_modules/alpinejs/dist/cdn.min.js', onFound }));
+app.get('/ansi_up.js', serveStatic({ path: 'node_modules/ansi_up/ansi_up.js', onFound }));
 app.use('*', serveStatic({ root: 'public', onFound }));
 
 serve({ fetch: app.fetch, port: 8642, hostname: '0.0.0.0' });
