@@ -30,7 +30,7 @@
       <button :disabled="!app || app.status === 'updating'" @click="control('update')">
         Update
       </button>
-      <button :disabled="!app" @click="clear()">Clear logs</button>
+      <button :disabled="!app" @click="clear()">Clear</button>
     </header>
     <nav>
       <template x-for="app in apps" :key="app.name">
