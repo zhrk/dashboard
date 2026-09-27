@@ -3,22 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <link rel="icon" href="./favicon.svg" />
     <title>Dashboard</title>
-    <link rel="stylesheet" href="./style.css" />
+    <link rel="icon" href="favicon.svg" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js"></script>
+    <script src="alpine.js" defer></script>
   </head>
-  <body>
-    <div id="sidebar">
-      <h1>Dashboard</h1>
-      <div id="script-list"></div>
-    </div>
-    <div id="main">
-      <div id="topbar">
-        <strong id="active-label">Select a script</strong>
-        <span class="conn down" id="conn-status">disconnected</span>
-      </div>
-      <pre id="log"></pre>
-    </div>
-    <script src="./script.js"></script>
+  <body x-data="dashboard">
+    <header>
+      <h1><img src="favicon.svg" alt="" />Dashboard</h1>
+      <button
+        :disabled="!app || ['running', 'updating'].includes(app.status)"
+        @click="control('start')"
+      >
+        Start
+      </button>
+      <button
+        :disabled="!app || ['stopped', 'updating'].includes(app.status)"
+        @click="control('stop')"
+      >
+        Stop
+      </button>
+      <button :disabled="!app || app.status === 'updating'" @click="control('restart')">
+        Restart
+      </button>
+      <button :disabled="!app || app.status === 'updating'" @click="control('update')">
+        Update
+      </button>
+      <button :disabled="!app" @click="clear()">Clear logs</button>
+    </header>
+    <nav>
+      <template x-for="app in apps" :key="app.name">
+        <button :class="{ active: app.name === selected }" @click="select(app.name)">
+          <i :class="app.status"></i>
+          <span x-text="app.name"></span>
+          <small x-text="app.status"></small>
+        </button>
+      </template>
+    </nav>
+    <pre
+      x-ref="logs"
+      @scroll="follow = $el.scrollTop + $el.clientHeight >= $el.scrollHeight - 20"
+    ><template
+        x-for="log in logs" :key="log.id"><div :class="log.stream"><time x-text="new Date(log.time).toLocaleTimeString()"></time> <span x-text="log.text"></span></div></template></pre>
   </body>
 </html>

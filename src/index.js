@@ -1,14 +1,18 @@
-'use strict';
+import { Hono } from 'hono';
+import { proxy } from 'hono/proxy';
+import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 
-const pm = require('./pm.js');
-require('./server.js');
+const API_URL = 'http://127.0.0.1:11379';
 
-pm.startAll();
+const app = new Hono();
 
-function shutdown() {
-  pm.stopAll();
-  process.exit(0);
-}
+app.all('/apps/*', (c) => proxy(API_URL + c.req.path + new URL(c.req.url).search, c.req.raw));
+app.get('/events', (c) => proxy(API_URL + '/events', { raw: c.req.raw, signal: null }));
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+const onFound = (_, c) => c.header('Cache-Control', 'no-cache');
+
+app.get('/alpine.js', serveStatic({ path: 'node_modules/alpinejs/dist/cdn.min.js', onFound }));
+app.use('*', serveStatic({ root: 'public', onFound }));
+
+serve({ fetch: app.fetch, port: 8642, hostname: '0.0.0.0' });
